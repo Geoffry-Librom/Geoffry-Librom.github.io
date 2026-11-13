@@ -8,7 +8,7 @@ date: 2026-11-04
 >
 > 各游戏的具体实战只写游戏本身的内容，环境部分直接引用本文：
 > - [龙信2：异界石自动送礼](/2026/11/05/ps5-dd2-rift-bot.html)
-> - [影之刃零：饰品属性无限叠加](/2026/11/06/ps5-pbz-accessory-bot.html)
+> - [影之刃零：饰品属性叠加（实测 100 倍上限）](/2026/11/06/ps5-pbz-accessory-bot.html)
 
 **本文结构**
 
@@ -21,7 +21,7 @@ date: 2026-11-04
 7. BetterDisplay 虚拟屏：挂机和办公互不打扰
 8. 后台截图 + 后台发键：底层实现与三个大坑
 9. 通用视觉判断方法
-10. 运行、停止与日志
+10. 运行、停止、日志与手机提醒
 11. 新项目检查清单
 
 > ⚠️ 声明：本文只用于单机内容的学习与研究。用自动化操作远程游玩可能不符合平台或游戏的使用条款，请自行评估账号风险；长时间挂机注意主机和电脑散热。
@@ -183,21 +183,24 @@ except Exception as e:
 
 ### 4.1 键盘映射
 
-Chiaki-ng → Settings → Keys。我的所有项目都用同一套映射，脚本按这张表发键；你的映射不同，就改脚本顶部的按键常量。
+Chiaki-ng → Settings → Keys。我的所有项目都用同一套映射，脚本按这张表发键；你的映射不同，就改脚本顶部的按键常量（`K_CROSS / K_CIRCLE / K_UP / ...`，集中写在一处）。
 
 | 手柄 | 键盘 |
 |---|---|
-| ✕ | `/` |
-| ○ | `'` |
-| □ | `;` |
-| △ | `[` |
-| 十字键 上/下/左/右 | `I` / `K` / `J` / `L` |
+| ✕ | `K` |
+| ○ | `L` |
+| □ | `J` |
+| △ | `I` |
+| 十字键 上/左/下/右 | `T` / `F` / `G` / `H` |
 | L1 / R1 | `Q` / `E` |
 | L2 / R2 | `Tab` / `R` |
-| 触摸板 | `T` |
-| OPTIONS | `O` |
+| 触摸板 | `Y` |
+| OPTIONS | `P` |
+| Share | `O` |
 | 左摇杆 | `W A S D` |
 | 右摇杆 | `↑ ↓ ← →` |
+
+> **手柄按键全部用字母键，别用符号键。** 我最早把 ✕/○/□/△ 映射在 `/`、`'`、`;`、`[` 上，结果 □（`;`）、○（`'`）都出过“卡住”：脚本按、手动在 Chiaki 里按都没反应，手柄直连 PS5 却正常，在 Chiaki 设置里把这个键改成别的再改回来才好（见 8.4）。字母键从没出过这种问题，所以 11/09 起全换成了字母。
 
 > 键盘是"数字量"：摇杆要么推到底、要么不推，没有半推。需要控制镜头转多少的游戏，就得靠"按多久"来控制，并做一次转向标定（见龙信2篇）。
 
@@ -343,7 +346,7 @@ def capture_raw(self):
 
 ### 8.3 大坑二：发出去的 `o` 变成了 ⌘O
 
-用 `kCGEventSourceStateHIDSystemState` 创建的按键事件，会带上**你当时在 Mac 上实际按着的修饰键**。挂机时你正好在别处按着 ⌘（⌘C、⌘Tab），脚本发的 `o` 就变成 **⌘O**（打开串流菜单，之后所有按键进不了游戏），`q` 会变成 **⌘Q**（直接退出 Chiaki）。
+用 `kCGEventSourceStateHIDSystemState` 创建的按键事件，会带上**你当时在 Mac 上实际按着的修饰键**。挂机时你正好在别处按着 ⌘（⌘C、⌘Tab），脚本发的 `o`（当时 OPTIONS 映射在 `O` 上）就变成 **⌘O**（打开串流菜单，之后所有按键进不了游戏），`q` 会变成 **⌘Q**（直接退出 Chiaki）。
 
 ```python
 src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
@@ -356,11 +359,19 @@ Quartz.CGEventPostToPid(pid, ev)
 
 ### 8.4 大坑三：某个键间歇性"失灵"
 
-现象：其他键都正常，只有某一个键（我遇到过 □、○）按了没反应，补发松开事件、松开所有键都没用，重启脚本过几分钟又好了。目前原因还没定论（可能在 PS5/游戏侧）。通用做法：
+现象：其他键都正常，只有某一个键（我遇到过 □、○）按了没反应，补发松开事件、松开所有键都没用，有时过几分钟自己又好了。
+
+后来查清楚了，分两种：
+
+1. **真失灵，问题在 Chiaki 里**：脚本按、手动在 Chiaki 里按都没反应，但这个键在 Mac 其他程序里正常、手柄直连 PS5 也正常。在 Chiaki → Settings → Keys 里把这个按钮改成别的键、再改回来，立刻就好了——重新映射会让 Chiaki 重建按键状态。出过问题的都是**符号键**（`;`、`'`），所以干脆把手柄按键全换成了字母（见 4.1）。
+2. **假失灵，是游戏状态**：比如影之刃零里，上一轮重置修行树后、重学节点时失败了，修行树停在“重置完、没学完”的状态，没东西可重置，按 □ 本来就不会弹确认框。这种要先检查游戏状态，而不是当成按键坏了去等。
+
+通用做法：
 
 - 每次按下前先补发一次松开，脚本退出时在 `finally` 里松开所有键；
 - 按完**检查画面有没有变化**，没变化重试几次；
-- 仍不行就退回安全状态，按 60/120/240/480 秒逐步等待再试，长时间不恢复才停止，并在日志里记录等了多久。
+- 没反应时先排除“游戏状态本来就不响应”的情况；
+- 仍不行就退回安全状态，按 60/120/240/480 秒逐步等待再试，长时间不恢复才停止，并在日志里记录等了多久（停止时发消息到手机，见 10.5）。
 
 ### 8.5 冻结看门狗
 
@@ -386,6 +397,7 @@ Quartz.CGEventPostToPid(pid, ev)
 | EasyOCR + 模糊匹配 | 菜单项、名字、数字 | 关键词拆成多个片段，`difflib` 相似度；建立"常见误读表"统一归一 |
 | 菜单高亮判断 | 光标在哪一行 | 依次用亮度 → 饱和度 → 按键前后变化量；背后有发光物时亮度会失效，饱和度更稳 |
 | 右对齐数字读取 | 金额、资源数 | 数字变长会往左长，不要用固定读数框；按列找字符块从右往左合并，读多次取多数 |
+| 按键后读文字 | 光标移动后读标题 | 文字可能**晚一拍**才变：读到和按之前一样，先多等几次再判断“没动”，否则会多按一下、漏掉一项 |
 
 ### 9.3 OCR 常见误读（中文界面）
 
@@ -398,7 +410,7 @@ Quartz.CGEventPostToPid(pid, ev)
 
 ---
 
-## 10. 运行、停止与日志
+## 10. 运行、停止、日志与手机提醒
 
 ### 10.1 项目目录约定
 
@@ -409,6 +421,7 @@ GameName/
 ├── run_vN_menu.command     # 双击：菜单选模式（单模块测试）
 ├── run_vN_diagnose.command # 双击：截一帧打印全部检测结果
 ├── stop_bot.command        # 双击：安全停止
+├── test_imessage.command   # 双击：发一条测试 iMessage 到手机（见 10.5）
 ├── reference/              # 按流程编号的参考截图 + README
 ├── assets/easyocr/         # OCR 模型
 └── debug/logs/             # 每次运行的完整日志
@@ -441,9 +454,67 @@ cd "$(dirname "$0")" && touch STOP && echo "已发出停止信号" && sleep 2
 
 出问题时，完整日志里的得分、坐标、OCR 结果比截图更有用。
 
+另外，脚本在 PyCharm 里被点停止按钮、或终端窗口被关掉时，系统会发 SIGHUP / SIGTERM。在脚本里把这两个信号也当成“手动中断”处理（抛 `KeyboardInterrupt`），`finally` 里照样能松开按键、打印进度、发提醒；但如果紧接着被强制杀掉就来不及，所以平时还是用 `stop_bot.command` 停。
+
 ### 10.4 散热
 
 Chiaki 持续解码 + 脚本持续截图跑 OCR，长时间挂机 Mac 会明显发热。可以把串流帧率降到 30fps、分辨率 1080p、确认用硬件解码；电脑放在硬质平面上通风。**闻到焦味或塑料味，先停掉挂机。**
+
+### 10.5 停止提醒：发 iMessage 到手机
+
+挂机一跑就是十几个小时，Mac 自带的通知只能在 Mac 上看到。我让脚本在**停止时发一条 iMessage 到手机**：正常跑完、出了异常、被手动停了，手机上都能马上看到原因。
+
+不用装任何东西，原理是让 Mac 自带的“信息”App 替你发：
+
+```text
+Python 脚本
+  └─ subprocess（标准库，相当于在终端里敲命令）
+       └─ osascript（macOS 自带的 AppleScript 执行器；OSA = Open Scripting Architecture）
+            └─ AppleScript：tell application "Messages" to send ...
+                 └─ “信息”App 用你登录的 Apple ID，经苹果的 iMessage 服务器发出 → iPhone 收到
+```
+
+准备：
+
+1. Mac 的“信息”App 登录 Apple ID（Messages → Settings → iMessage）；
+2. 脚本顶部 `IMESSAGE_TO` 填接收的**手机号**（`+86...`）或 **Apple ID 邮箱**，留空就不发；
+3. 第一次发送时 macOS 会问“是否允许 终端 / PyCharm 控制‘信息’”，点允许（点错了到“系统设置 → 隐私与安全性 → 自动化”里打开）。
+
+核心代码（号码和内容作为参数传给 AppleScript，消息里有引号、换行也不会出错；新旧版 macOS 的写法都兼容）：
+
+```python
+IMESSAGE_TO = ""   # 手机号（+86...）或 Apple ID 邮箱；留空 = 不发
+
+IMESSAGE_SCRIPT = '''on run argv
+    set toWho to item 1 of argv
+    set msg to item 2 of argv
+    tell application "Messages"
+        try
+            set svc to 1st account whose service type = iMessage
+            send msg to participant toWho of svc
+        on error
+            set svc to 1st service whose service type = iMessage
+            send msg to buddy toWho of svc
+        end try
+    end tell
+end run'''
+
+
+def notify_phone(msg):
+    if not IMESSAGE_TO:
+        return False
+    import subprocess
+    r = subprocess.run(["osascript", "-", IMESSAGE_TO, msg], input=IMESSAGE_SCRIPT,
+                       text=True, capture_output=True, timeout=20)
+    return r.returncode == 0
+```
+
+用法：主程序的 `try ... except ... finally` 里，每种退出方式（正常结束、安全停止、STOP 文件、手动中断、崩溃）都记一个原因，`finally` 里统一调用 `notify_phone()`，再附上本次跑了多少、还剩多少。只有 Mac 断电、死机时发不出来。
+
+两个坑：
+
+- **“Not Delivered”**：有一天消息突然全部未送达，Mac 能上网、iPhone 发消息也正常。原因是 **iPhone 上手机号的 iMessage 注册掉了**（设置 → App → 信息 → 发送与接收：手机号勾不上 / 一直转圈），Mac 的 iMessage 设置里也只剩邮箱。临时解决：`IMESSAGE_TO` 改成 Apple ID 邮箱。手机号要在 iPhone 上关掉 iMessage 再打开重新激活，国内的卡可能要开通国际短信、等几个小时。
+- **osascript 返回成功 ≠ 送达**：它只说明“交给信息 App 了”。真担心漏消息，可以再加一条备用通道（微信的 Server酱 / PushPlus，或 iPhone 的 Bark）。另外“能上网”也不等于 iMessage 通，它走的是苹果自己的推送通道。
 
 ---
 
@@ -457,3 +528,5 @@ Chiaki 持续解码 + 脚本持续截图跑 OCR，长时间挂机 Mac 会明显�
 - [ ] 先跑 diagnose 模式，确认截图、OCR 正常
 - [ ] 按流程截好参考图（`reference/00_…`），每个界面写清：看到什么 → 怎么确认是它 → 按什么 → 按完怎么确认成功
 - [ ] 每种界面都有退出方法，连续无进展会自动停止
+- [ ] 手柄按键都映射在字母键上（不用 `; ' / [` 这些符号键）
+- [ ] （可选）填好 `IMESSAGE_TO`，双击 `test_imessage.command` 确认手机能收到停止提醒

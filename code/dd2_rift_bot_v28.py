@@ -3,6 +3,10 @@
 龙之信条2 (DD2) 异界石自动招人送礼脚本 —— v28（后台模式 + 虚拟屏）
 VERSION = v28（2026-10-25）。历史版本放在 history/ 文件夹（只保留最近 3 份）。
 
+v28 小修（11/09）：键位全部改成字母（Cross=K Moon=L Box=J Pyramid=I，十字键 上/左/下/右=T/F/G/H，Options=P，
+  Touchpad=Y）。符号键（; ' /）在 Chiaki 里偶尔会"卡住"（影之刃零项目里 □=; 按了没反应，重新映射一下才好）。
+  代码里的按键都改用顶部的 K_* 常量，以后换键位只改那几行。
+
 v28 相对 v27 的改动（10/25 17:18 日志：雇佣寻人时【打招呼】提示其实是主随从 Polay 的（名牌读不出 → 照常说话），
 弹出主随从的【重要的事 / 闲聊 / 放弃】菜单。脚本不认识它，当成普通菜单连按 ○ —— ○ 只会把光标移到【放弃】、不会关菜单，
 之后 7 分钟一直卡在这里，外部寻石还把她发光的盔甲当成了异界石）：
@@ -314,9 +318,13 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # =============================================================================
 MATCH_SCALE = 0.5           # UI 模板粗搜的分辨率；得分始终在全分辨率精修，和上一版阈值可比。改成 1.0 = 纯全分辨率
 MAP_CATEGORY_KEY = None     # 底部提示不是"返回的基石"时用来切换 L1/R1 跳转类别的按键；None = 只校验不切换
-# 按键（与你 Chiaki 的 Keys 设置一致）：/ = ✕确定，' = ○取消/交互，I/K/J/L = 十字键 上/下/左/右，
-# Q/E = L1/R1，Tab/R = L2/R2，T = 触摸板（地图），方向键 = 右摇杆（转镜头），WASD = 左摇杆
-KEY_CANCEL = "'"
+# 按键（与你 Chiaki 的 Keys 设置一致）。11/09 起全部改成字母键（符号键会在 Chiaki 里"卡住"）：
+# K = ✕确定，L = ○取消/交互，J = □，I = △，T/F/G/H = 十字键 上/左/下/右，P = OPTIONS，Y = 触摸板（地图），
+# Q/E = L1/R1，Tab/R = L2/R2，方向键 = 右摇杆（转镜头），WASD = 左摇杆
+K_CROSS, K_CIRCLE, K_SQUARE, K_TRIANGLE = "k", "l", "j", "i"
+K_UP, K_DOWN, K_LEFT, K_RIGHT = "t", "g", "f", "h"          # 十字键
+K_OPTIONS, K_TOUCHPAD = "p", "y"
+KEY_CANCEL = K_CIRCLE
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 # ---------- 路径 ----------
 try:
@@ -359,16 +367,17 @@ def out_path(name, folder):
     return os.path.join(folder, name)
 
 
-ALL_KEYS = ['w', 'a', 's', 'd', 'left', 'right', "'", '/', 'k', 'i', 'j', 'l', 'e', 't', 'tab', 'q', '[']
+ALL_KEYS = ['w', 'a', 's', 'd', 'left', 'right', K_CIRCLE, K_CROSS, K_SQUARE, K_TRIANGLE,
+            K_UP, K_DOWN, K_LEFT, K_RIGHT, 'e', K_TOUCHPAD, 'tab', 'q', K_OPTIONS]
 
 
 # =============================================================================
 # v6 后台模式：只截 Chiaki 窗口 + 按键直接发给 Chiaki 进程（不占用你的键盘鼠标）
 # =============================================================================
 MAC_KEYCODES = {
-    'a': 0, 's': 1, 'd': 2, 'q': 12, 'w': 13, 'e': 14, 't': 17, 'o': 31, '[': 33, 'i': 34,
-    'l': 37, 'j': 38, "'": 39, 'k': 40, '/': 44, 'tab': 48, 'left': 123, 'right': 124,
-    'down': 125, 'up': 126,
+    'a': 0, 's': 1, 'd': 2, 'f': 3, 'h': 4, 'g': 5, 'c': 8, 'q': 12, 'w': 13, 'e': 14, 'r': 15, 'y': 16,
+    't': 17, 'o': 31, 'u': 32, '[': 33, 'i': 34, 'p': 35, 'l': 37, 'j': 38, "'": 39, 'k': 40, ';': 41,
+    '/': 44, 'tab': 48, 'left': 123, 'right': 124, 'down': 125, 'up': 126,
 }
 CANON_W, CANON_H = 2880, 1800          # 和全屏时完全一样的画面：视频 2880x1620，上下各 90 像素黑边
 CANON_VID_H, CANON_VID_Y = 1620, 90
@@ -1811,8 +1820,8 @@ class DD2RiftBot:
         self.release_all_move_keys(force_all=True)
         time.sleep(0.5)
 
-        debug_log("    🗺️ 第1步: 短按 [t] 打开地图...")
-        self.tap_key("t", hold_time=0.06, wait_time=1.2)
+        debug_log(f"    🗺️ 第1步: 短按 [{K_TOUCHPAD}] 打开地图...")
+        self.tap_key(K_TOUCHPAD, hold_time=0.06, wait_time=1.2)
         hint_box = {'hint': ''}
 
         def map_open():
@@ -1854,9 +1863,9 @@ class DD2RiftBot:
             self.close_map()
             return self._teleport_failed(why)
 
-        debug_log("    ⚡ 第2步: [/] 使用飞石移动 → [/] 确认传送 → 等地图关闭、传送动画结束")
-        self.tap_key("/", hold_time=0.06, wait_time=0.8)
-        self.tap_key("/", hold_time=0.06, wait_time=1.0)
+        debug_log("    ⚡ 第2步: [✕] 使用飞石移动 → [✕] 确认传送 → 等地图关闭、传送动画结束")
+        self.tap_key(K_CROSS, hold_time=0.06, wait_time=0.8)
+        self.tap_key(K_CROSS, hold_time=0.06, wait_time=1.0)
         closed = self.wait_until(lambda: not self.hint_says_map_open(self.read_map_hint(self.grab())),
                                  timeout=8.0, interval=0.6, desc="等待地图关闭")
         if not closed:
@@ -1865,7 +1874,7 @@ class DD2RiftBot:
             return self._teleport_failed("按确认后地图没有关闭")
         time.sleep(2.0)
         self.wait_screen_settle(timeout=6.0, desc="传送动画结束")
-        self.tap_key("/", hold_time=0.06, wait_time=1.0)   # 原流程的第 3 下（跳过落地后的提示）
+        self.tap_key(K_CROSS, hold_time=0.06, wait_time=1.0)   # 原流程的第 3 下（跳过落地后的提示）
         self.teleport_fail_streak = 0
 
         # 原来的"落地固定宏 left 0.16s"是按旧镜头速度调的；镜头有加速度，按时长换算并不准 → 去掉，直接转一圈找石头
@@ -2019,20 +2028,20 @@ class DD2RiftBot:
                 return True
             if state == 'SEARCH_MENU':
                 if '标记为特别关注' in joined or '显示标记' in joined:
-                    debug_log("    ▶️ 光标已在【特别关注的追随者】→ 按 [/] 进入")
-                    self.tap_key('/', hold_time=self.menu_hold, wait_time=1.5)
+                    debug_log("    ▶️ 光标已在【特别关注的追随者】→ 按 [✕] 进入")
+                    self.tap_key(K_CROSS, hold_time=self.menu_hold, wait_time=1.5)
                     k_presses = 0
                 elif k_presses >= 7:
                     debug_log("    ↩️ 下移 7 次仍未到【特别关注】→ 按 [○] 返回上级重新进入")
                     self.tap_key(KEY_CANCEL, hold_time=self.menu_hold, wait_time=1.0)
                     k_presses = 0
                 else:
-                    debug_log("    🔽 光标不在【特别关注】→ 按 [k] 下移一格")
-                    self.tap_key('k', hold_time=self.menu_hold, wait_time=0.6)
+                    debug_log("    🔽 光标不在【特别关注】→ 按 [↓] 下移一格")
+                    self.tap_key(K_DOWN, hold_time=self.menu_hold, wait_time=0.6)
                     k_presses += 1
             elif state == 'MAIN_MENU':
-                debug_log("    ▶️ 处于异界石主菜单 → 按 [/] 进入【查找追随者】")
-                self.tap_key('/', hold_time=self.menu_hold, wait_time=1.2)
+                debug_log("    ▶️ 处于异界石主菜单 → 按 [✕] 进入【查找追随者】")
+                self.tap_key(K_CROSS, hold_time=self.menu_hold, wait_time=1.2)
             elif state == 'WRONG_LIST':
                 debug_log("    ↩️ 误进其他列表 → 按 [○] 返回")
                 self.tap_key(KEY_CANCEL, hold_time=self.menu_hold, wait_time=1.0)
@@ -2049,8 +2058,8 @@ class DD2RiftBot:
                 if self.handle_network("找特别关注", fr):
                     continue
                 if none_count in (3, 8, 14):
-                    debug_log("    🔁 长时间未见菜单 → 重新长按 ['] 打开异界石菜单")
-                    self.long_press_key("'", hold_time=2.0, wait_time=1.0)
+                    debug_log("    🔁 长时间未见菜单 → 重新长按 [○] 打开异界石菜单")
+                    self.long_press_key(K_CIRCLE, hold_time=2.0, wait_time=1.0)
                 else:
                     time.sleep(0.5)
         return False
@@ -2121,7 +2130,7 @@ class DD2RiftBot:
         names = [n for n, _ in self.SUBMENU_ROWS]
         rows = {}
         for attempt in range(2):
-            self.tap_key("/", hold_time=self.menu_hold, wait_time=0.6)
+            self.tap_key(K_CROSS, hold_time=self.menu_hold, wait_time=0.6)
             t0 = time.time()
             while time.time() - t0 < 3.0:
                 rows = self.fav_submenu(self.grab())
@@ -2130,7 +2139,7 @@ class DD2RiftBot:
                 time.sleep(0.3)
             if '召唤追随者' in rows:
                 break
-            debug_log(f"    ❔ [召唤] 按 [/] 后 3s 没看到小菜单（读到 {list(rows)}）({attempt + 1}/2)")
+            debug_log(f"    ❔ [召唤] 按 [✕] 后 3s 没看到小菜单（读到 {list(rows)}）({attempt + 1}/2)")
         else:
             return False
         debug_log(f"    📋 [召唤] 小菜单已打开：{list(rows)}")
@@ -2138,14 +2147,14 @@ class DD2RiftBot:
             hl, vals = self.submenu_highlight(self.grab(), rows)
             vtxt = " / ".join(f"{k}={v:.0f}" for k, v in vals.items())
             if hl == '召唤追随者':
-                debug_log(f"    🎯 [召唤] 高亮在【召唤追随者】({vtxt}) → 按 [/]")
-                self.tap_key("/", hold_time=self.menu_hold, wait_time=0.8, quiet=True)
+                debug_log(f"    🎯 [召唤] 高亮在【召唤追随者】({vtxt}) → 按 [✕]")
+                self.tap_key(K_CROSS, hold_time=self.menu_hold, wait_time=0.8, quiet=True)
                 break
             if hl is None:
                 debug_log(f"    ❔ [召唤] 看不出小菜单高亮在哪一行 ({vtxt})，稍等再看")
                 time.sleep(0.4)
                 continue
-            key = 'k' if names.index(hl) < names.index('召唤追随者') else 'i'
+            key = K_DOWN if names.index(hl) < names.index('召唤追随者') else K_UP
             debug_log(f"    🔀 [召唤] 高亮在【{hl}】({vtxt}) → 按 [{key}]")
             self.tap_key(key, hold_time=self.menu_hold, wait_time=0.5, quiet=True)
         else:
@@ -2162,7 +2171,7 @@ class DD2RiftBot:
     # =========================================================================
     ROI_PAUSE_TITLE = (0.02, 0.02, 0.25, 0.12)
     ROI_PARTY_NAMES = (0.00, 0.68, 0.45, 0.98)   # v27：从 0.78~0.90 放大（10/25 15:03 一个名字都没读到）
-    KEY_PAUSE = 'o'
+    KEY_PAUSE = K_OPTIONS
     PARTY_SUPPORT_X = 0.215   # 队伍卡片：自己 x≈0.035、主随从 ≈0.155、支援随从 ≈0.25（屏宽比例）
 
     ROI_PAUSE_LEFT = (0.00, 0.00, 0.42, 0.72)   # v25：标题 + 左列菜单（Item/Map/Quest/…）+ "使用或交换道具"
@@ -2254,7 +2263,7 @@ class DD2RiftBot:
             if not self.pause_menu_open()[0]:
                 break
         else:
-            debug_log("    ⚠️ [查队伍] 按了 3 次 ['] 暂停菜单还在")
+            debug_log("    ⚠️ [查队伍] 按了 3 次 [○] 暂停菜单还在")
         return hit, names, True
 
     def ensure_at_riftstone(self, tag):
@@ -2272,7 +2281,7 @@ class DD2RiftBot:
             debug_log("❌ [模块 2] 不在异界石前，放弃本次召唤")
             return False
 
-        self.long_press_key("'", hold_time=self.riftstone_hold, wait_time=0.3)
+        self.long_press_key(K_CIRCLE, hold_time=self.riftstone_hold, wait_time=0.3)
 
         # 先确认真的进石了：顶部【基础信息】出现（读条 + 进石动画约 3~5s）
         if not self.wait_until(lambda: self.is_inside_rift(retries=1, verbose=False), timeout=12.0, interval=0.4,
@@ -2305,7 +2314,7 @@ class DD2RiftBot:
             debug_log("    ⚠️ 已进石，但 13s 内未同时检测到【基础信息】+【调查】，继续尝试打开菜单（以菜单 OCR 状态为准）")
 
         self.handle_network("打开异界石菜单前")
-        self.long_press_key("'", hold_time=2.0, wait_time=0.6)
+        self.long_press_key(K_CIRCLE, hold_time=2.0, wait_time=0.6)
         nav = self.navigate_to_favorites()
         if nav == 'NOT_IN_LIST':
             # v24：先关掉异界石菜单，按 [o] 打开暂停菜单看左下角队伍：目标还在队伍里 = 上一轮没解雇成功 → 续接去解雇
@@ -2329,7 +2338,7 @@ class DD2RiftBot:
                 f"队伍里也没有 {self.target_name}（队伍={seen}）")
         if nav == 'EMPTY':
             # v19：退出菜单 —— 间隔短按 ○ 三次，再确认回到了石内（顶部【基础信息】且没有菜单）
-            debug_log("    ↩️ 退出异界石菜单：间隔短按 ['] 三次")
+            debug_log(f"    ↩️ 退出异界石菜单：间隔短按 [{K_CIRCLE}] 三次")
             for _ in range(3):
                 self.tap_key(KEY_CANCEL, hold_time=self.menu_hold, wait_time=0.9)
             fr = self.grab()
@@ -2346,9 +2355,9 @@ class DD2RiftBot:
             raise StuckInRiftException(f"菜单状态机 {self.max_repeat_limit} 次未能进入特别关注列表！")
 
         if self.fav_row:
-            debug_log(f"    🔽 目标在第 {self.fav_row + 1} 行 → 先按 [k] 下移 {self.fav_row} 行")
+            debug_log(f"    🔽 目标在第 {self.fav_row + 1} 行 → 先按 [↓] 下移 {self.fav_row} 行")
             for _ in range(self.fav_row):
-                self.tap_key("k", hold_time=self.menu_hold, wait_time=0.5)
+                self.tap_key(K_DOWN, hold_time=self.menu_hold, wait_time=0.5)
         if not self.summon_from_submenu():   # v22：每一步都确认，不再 [/][k][/] 盲按
             self.close_rift_menus("召唤失败")
             raise StuckInRiftException("召唤没有确认成功（小菜单 / 高亮 / 菜单关闭 其中一步没对上）")
@@ -2648,13 +2657,13 @@ class DD2RiftBot:
                 debug_log(f"    💡 [亮度对比 #{attempt}/5] '是'={shi_lum:.1f} | '否'={fou_lum:.1f} | 目标='{target_label}'")
                 is_target_selected = (shi_lum > fou_lum + 4) if choose_yes else (fou_lum > shi_lum + 4)
                 if is_target_selected:
-                    self.tap_key("/", wait_time=2.5 if choose_yes else 1.2)
+                    self.tap_key(K_CROSS, wait_time=2.5 if choose_yes else 1.2)
                     return True
-                self.tap_key("k", wait_time=0.4)
+                self.tap_key(K_DOWN, wait_time=0.4)
         debug_log(f"    ⚠️ 执行保底盲按操作 (choose_yes={choose_yes})...")
         if not choose_yes:
-            self.tap_key("k", wait_time=0.4)
-        self.tap_key("/", wait_time=2.5 if choose_yes else 1.2)
+            self.tap_key(K_DOWN, wait_time=0.4)
+        self.tap_key(K_CROSS, wait_time=2.5 if choose_yes else 1.2)
         return False
 
     def exit_dialog_confirmed(self, fr):
@@ -2721,9 +2730,9 @@ class DD2RiftBot:
                         self.leave_other_pawn(stage_name, who, back_off=not (has_seen_pawn or seen_recent))
                         continue
                     debug_log(f"    👤 提示上方名牌: {'✅ ' + who if owner == 'target' else '读不出（说话后再用菜单确认）'}")
-                    debug_log("    🛑 随从贴脸确认！长按 ['] 1.5秒发起对话，随后按 [/]...")
-                    self.long_press_key("'", hold_time=1.5, wait_time=1.0)
-                    self.tap_key("/", wait_time=1.0)
+                    debug_log("    🛑 随从贴脸确认！长按 [○] 1.5秒发起对话，随后按 [✕]...")
+                    self.long_press_key(K_CIRCLE, hold_time=1.5, wait_time=1.0)
+                    self.tap_key(K_CROSS, wait_time=1.0)
                     debug_log(f"✅ [模块 3 - {stage_name}] 成功进入随从对话界面！(用时 {time.time() - t_start:.1f}s)")
                     return True
                 is_near, near_ttl = True, 6
@@ -2909,7 +2918,7 @@ class DD2RiftBot:
 
     # v23：非贵重物品送礼时的【请选择个数 ◀ 1 ▶】框（画面中间偏左，礼物说明的下方）
     ROI_QTY = (0.25, 0.36, 0.62, 0.62)
-    QTY_MAX_KEY = 'j'   # 个数从 1 往左翻 = 直接到最大
+    QTY_MAX_KEY = K_LEFT   # 个数从 1 往左翻 = 直接到最大
 
     def quantity_dialog_up(self, fr):
         """返回 (是否是选个数框, 读到的文字, [(文字, 中心x, 中心y)])"""
@@ -2947,7 +2956,7 @@ class DD2RiftBot:
             after = self.qty_number(items2)
         debug_log(f"    🔢 [送礼个数] 选个数框：{before if before is not None else '?'} → "
                   f"{after if after is not None else '?'}（按 [{self.QTY_MAX_KEY}] 选最大）→ 按 [/]")
-        self.tap_key("/", hold_time=self.menu_hold, wait_time=0.8, quiet=True)
+        self.tap_key(K_CROSS, hold_time=self.menu_hold, wait_time=0.8, quiet=True)
 
     # =========================================================================
     # v26：【通信出现错误，无法连接到网络。是否重试？】→ 选【是】→ 等【成功连接网络】→ 按【是】；连不上就停止
@@ -2977,8 +2986,8 @@ class DD2RiftBot:
         if kind is None:
             return False
         if kind == 'OK':
-            debug_log(f"    🌐 [{tag}] 【成功连接网络】→ 按 [/]")
-            self.tap_key("/", wait_time=1.0, quiet=True)
+            debug_log(f"    🌐 [{tag}] 【成功连接网络】→ 按 [✕]")
+            self.tap_key(K_CROSS, wait_time=1.0, quiet=True)
             return True
         self.release_all_move_keys(force_all=True, quiet=True)
         for attempt in range(1, self.net_retry_limit + 1):
@@ -2990,10 +2999,10 @@ class DD2RiftBot:
             while time.time() - t0 < 30.0:
                 kind, text = self.network_dialog()
                 if kind == 'OK':
-                    debug_log(f"    ✅ [{tag}] 【成功连接网络】→ 按 [/]（重试用时 {time.time() - t0 + 2:.0f}s）")
-                    self.tap_key("/", wait_time=1.0, quiet=True)
+                    debug_log(f"    ✅ [{tag}] 【成功连接网络】→ 按 [✕]（重试用时 {time.time() - t0 + 2:.0f}s）")
+                    self.tap_key(K_CROSS, wait_time=1.0, quiet=True)
                     if self.network_dialog()[0] == 'OK':   # 没生效再补一下
-                        self.tap_key("/", wait_time=1.0, quiet=True)
+                        self.tap_key(K_CROSS, wait_time=1.0, quiet=True)
                     return True
                 if kind == 'ERR':
                     if gone_since is not None or time.time() - t0 > 6.0:
@@ -3013,9 +3022,9 @@ class DD2RiftBot:
     def exit_pawn_chat(self, tag):
         """v28：主随从的【重要的事 / 闲聊 / 放弃】菜单。○ 只会把光标移到【放弃】，不会关菜单（10/25 17:18 连按 12 次 ○ 都没出来）
         → ○ 移到【放弃】再按 ✕。就算光标没到【放弃】，选到的也只是闲聊台词，后面按 ✕ 跳过即可，没有风险"""
-        debug_log(f"    🗨️ [{tag}] 主随从的【重要的事/闲聊/放弃】菜单 → 按 [○] 移到【放弃】，再按 [/]")
+        debug_log(f"    🗨️ [{tag}] 主随从的【重要的事/闲聊/放弃】菜单 → 按 [○] 移到【放弃】，再按 [✕]")
         self.tap_key(KEY_CANCEL, hold_time=self.menu_hold, wait_time=0.6, quiet=True)
-        self.tap_key("/", hold_time=self.menu_hold, wait_time=1.0, quiet=True)
+        self.tap_key(K_CROSS, hold_time=self.menu_hold, wait_time=1.0, quiet=True)
 
     def hire_panel_info(self, fr):
         """雇佣面板左侧：(是否加载完成, 是否目标随从, OCR 文本)"""
@@ -3099,7 +3108,7 @@ class DD2RiftBot:
                 # v25：10/25 00:39 日志 —— 按 [k] 后第 1、2 行饱和度都在 70~80（背景偏灰），强弱判据都分不出。
                 # 看变化量：原来高亮的那一行饱和度升高 ≥15、按键方向上的下一行降低 ≥15 → 光标确实移过去了（连续两次）
                 r_idx, r_vals, r_key = ref
-                exp = r_idx + (1 if r_key == 'k' else -1)
+                exp = r_idx + (1 if r_key == K_DOWN else -1)
                 # v27：10/25 15:02 —— 按 [k] 后第 1、2 行都在 75~85（她发光的白色身体正好在这两行背后，第 2 行本来就偏灰），
                 # 第 2 行的饱和度几乎没变，v25 要求"下一行也降低 ≥15"就判断不出来。
                 # 光标只按了一下、不会跳行：原高亮行明显变蓝（升高 ≥15）= 光标已经离开 → 一定在按键方向的下一行（仍要求连续两次）
@@ -3125,8 +3134,8 @@ class DD2RiftBot:
             else:
                 weak_prev = None
             if idx == target:
-                debug_log(f"    🎯 [{tag}] 高亮在【{name}】(各行饱和度 {vtxt}) → 按 [/]")
-                self.tap_key("/", wait_time=0.8, quiet=True)
+                debug_log(f"    🎯 [{tag}] 高亮在【{name}】(各行饱和度 {vtxt}) → 按 [✕]")
+                self.tap_key(K_CROSS, wait_time=0.8, quiet=True)
                 return True
             if idx is None:
                 unsure += 1
@@ -3147,22 +3156,22 @@ class DD2RiftBot:
                     if target in order[:2] and not contra:
                         debug_log(f"    🧮 [{tag}] 看不清但按推断光标在【{name}】(最灰两行={[int(r) + 1 for r in order[:2]]}，"
                                   f"文字亮度 {'/'.join(f'{v:.0f}' for v in tb)}) → 按 [/]")
-                        self.tap_key("/", wait_time=0.8, quiet=True)
+                        self.tap_key(K_CROSS, wait_time=0.8, quiet=True)
                         return True
                 time.sleep(0.4)
                 continue
             unsure = 0   # v28：只数"连续"看不清的次数
-            key = 'k' if idx < target else 'i'
+            key = K_DOWN if idx < target else K_UP
             debug_log(f"    🔀 [{tag}] 高亮在第 {idx + 1} 行 (各行饱和度 {vtxt})，目标【{name}】在第 {target + 1} 行 → 按 [{key}]")
             self.tap_key(key, wait_time=0.45, quiet=True)
             ref, delta_prev, weak_prev = (idx, list(vals), key), None, None
-            expected = idx + (1 if key == 'k' else -1)
+            expected = idx + (1 if key == K_DOWN else -1)
         debug_log(f"    ⚠️ [{tag}] {tries} 次都没能确认高亮在【{name}】，不按确定")
         return False
 
     def exit_side_menu(self, n, tag):
         """退出右侧对话菜单：○ 只会把光标移到最下一行（放弃 / 没什么事），确认高亮在那一行再按 ✕"""
-        debug_log(f"    ↩️ [{tag}] 退出对话菜单：按 [○] 把光标移到最下一行，确认后再按 [/]")
+        debug_log(f"    ↩️ [{tag}] 退出对话菜单：按 [○] 把光标移到最下一行，确认后再按 [✕]")
         self.tap_key(KEY_CANCEL, wait_time=0.5, quiet=True)
         return self.select_menu_row(n, n - 1, tag, assume_start=n - 1)
 
@@ -3172,13 +3181,13 @@ class DD2RiftBot:
         for _ in range(tries):
             idx, vals = self.confirm_highlight(self.grab())
             if idx == target:
-                debug_log(f"    ✅ [{tag}] 高亮在【{'是' if yes else '否'}】(亮度 {vals[0]:.0f}/{vals[1]:.0f}) → 按 [/]")
-                self.tap_key("/", wait_time=0.8, quiet=True)
+                debug_log(f"    ✅ [{tag}] 高亮在【{'是' if yes else '否'}】(亮度 {vals[0]:.0f}/{vals[1]:.0f}) → 按 [✕]")
+                self.tap_key(K_CROSS, wait_time=0.8, quiet=True)
                 return True
             if idx is None:
                 time.sleep(0.3)
                 continue
-            self.tap_key('i' if idx > target else 'k', wait_time=0.4, quiet=True)
+            self.tap_key(K_UP if idx > target else K_DOWN, wait_time=0.4, quiet=True)
         debug_log(f"    ⚠️ [{tag}] 没能确认高亮在【{'是' if yes else '否'}】，不按确定")
         return False
 
@@ -3212,8 +3221,8 @@ class DD2RiftBot:
                 self.handle_network(tag, fr)
                 continue
             if kind == 'DIALOGUE':
-                debug_log(f"    💬 [{tag}] 台词 → 按 [/] 跳过")
-                self.tap_key("/", wait_time=0.6, quiet=True)
+                debug_log(f"    💬 [{tag}] 台词 → 按 [✕] 跳过")
+                self.tap_key(K_CROSS, wait_time=0.6, quiet=True)
                 continue
             time.sleep(0.4)
         debug_log(f"    ⚠️ [{tag}] {timeout:.0f}s 内没等到对话菜单（最后看到 {kind}）")
@@ -3338,7 +3347,7 @@ class DD2RiftBot:
             elif kind == 'PAWN_CHAT':
                 self.exit_pawn_chat(tag)
             elif kind == 'DIALOGUE':
-                self.tap_key("/", wait_time=0.6, quiet=True)
+                self.tap_key(K_CROSS, wait_time=0.6, quiet=True)
             elif kind == 'HIRE_PANEL':
                 self.exit_side_menu(5, tag)
             elif kind == 'PARTY_MENU':
@@ -3348,7 +3357,7 @@ class DD2RiftBot:
             elif kind == 'CONFIRM':
                 self.choose_confirm(yes=False, tag=tag)
             elif kind == 'RATING':
-                self.tap_key("/", wait_time=0.8, quiet=True)
+                self.tap_key(K_CROSS, wait_time=0.8, quiet=True)
             elif kind == 'MAP':
                 self.close_map()
             else:   # GIFT / MENU（状态界面、异界石菜单等）
@@ -3367,8 +3376,8 @@ class DD2RiftBot:
             talking, hint = self.in_dialogue(fr)
             if talking:
                 presses += 1
-                debug_log(f"    💬 [{tag}] 对话中 (右下角='{hint}') → 按 [/] 快进 ({presses})")
-                self.tap_key("/", wait_time=0.6, quiet=True)
+                debug_log(f"    💬 [{tag}] 对话中 (右下角='{hint}') → 按 [✕] 快进 ({presses})")
+                self.tap_key(K_CROSS, wait_time=0.6, quiet=True)
                 idle_since = None
                 continue
             side = self.read_side_menu(fr)
@@ -3411,8 +3420,8 @@ class DD2RiftBot:
             if unknown_presses > 0:
                 title, _ = crop_frac(fr.bgr, (0.03, 0.06, 0.20, 0.16))
                 if '评价' in "".join(self.ocr_texts(title)):
-                    debug_log(f"    ⭐ [{tag}] 评价界面 → 按 [/]")
-                    self.tap_key("/", wait_time=0.8, quiet=True)
+                    debug_log(f"    ⭐ [{tag}] 评价界面 → 按 [✕]")
+                    self.tap_key(K_CROSS, wait_time=0.8, quiet=True)
                     idle_since = None
                     continue
             if unknown_used < unknown_presses:
@@ -3420,8 +3429,8 @@ class DD2RiftBot:
                     idle_since = time.time()
                 elif time.time() - idle_since >= 1.2:
                     unknown_used += 1
-                    debug_log(f"    ❔ [{tag}] 不在石内也不是对话（确认框/过场？）→ 按 [/] ({unknown_used}/{unknown_presses})")
-                    self.tap_key("/", wait_time=0.6, quiet=True)
+                    debug_log(f"    ❔ [{tag}] 不在石内也不是对话（确认框/过场？）→ 按 [✕] ({unknown_used}/{unknown_presses})")
+                    self.tap_key(K_CROSS, wait_time=0.6, quiet=True)
                     idle_since = None
                     continue
             time.sleep(0.4)   # 过场/加载中
@@ -3580,7 +3589,7 @@ class DD2RiftBot:
             self.has_gifted_ruler_armor = True
         # 选中礼物 → 非贵重物品（饲狼香囊、白雪石…）先弹【请选择个数】→ 按 [j] 选最大 → [/]；
         # 然后【将赠送此道具，是否继续？】→ 是；贵重物品可能再追加一个确认框。评价界面 / 台词交给 wait_back_in_rift
-        self.tap_key("/", wait_time=0.8)
+        self.tap_key(K_CROSS, wait_time=0.8)
         stage, qty_done = 0, False
         whats = ("送礼确认", "贵重物品追加确认")
         while stage < 2:
@@ -3657,7 +3666,7 @@ class DD2RiftBot:
             if best is not None and best['tier'] == 0:
                 break
             if i < self.gift_scan_limit - 1:
-                self.tap_key("j", wait_time=0.5, quiet=True)
+                self.tap_key(K_LEFT, wait_time=0.5, quiet=True)
                 pos = i + 1
         if best is None:
             return None
@@ -3670,9 +3679,9 @@ class DD2RiftBot:
         pos, idx, wrap = best['pos'], best['idx'], best['wrap']
         if wrap:   # 翻满一圈后又回到了第 1 个（当前位置 = 0）
             fwd, back = idx, wrap - idx
-            moves = ('j', fwd) if fwd <= back else ('l', back)
+            moves = (K_LEFT, fwd) if fwd <= back else (K_RIGHT, back)
         else:
-            moves = ('l', pos - idx)
+            moves = (K_RIGHT, pos - idx)
         key, n = moves
         if n:
             debug_log(f"    ↩️ [送礼] 回到第 {idx + 1} 个物品：按 [{key}] × {n}")
@@ -3738,8 +3747,8 @@ class DD2RiftBot:
         if hit_boundary:
             self.handle_exit_dialog(choose_yes=True, matched_loc=matched_exit_loc)
         else:
-            debug_log("⚠️ 20 秒奔跑未检测到边界弹窗，执行保底确认 [/]...")
-            self.tap_key("/", wait_time=3.0)
+            debug_log("⚠️ 20 秒奔跑未检测到边界弹窗，执行保底确认 [✕]...")
+            self.tap_key(K_CROSS, wait_time=3.0)
 
         if self.wait_until(lambda: not self.is_inside_rift(retries=1, verbose=False), timeout=8.0, interval=0.8,
                            desc="等待【基础信息】消失"):

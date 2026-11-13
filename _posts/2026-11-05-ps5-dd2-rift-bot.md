@@ -126,17 +126,20 @@ Chiaki-ng 的安装、PS5 注册（PSN 登录、主机注册 PIN）、串流画�
 
 | 手柄 | 键盘 | 脚本里的用途 |
 |---|---|---|
-| ✕ | `/` | 确认、对话快进 |
-| ○ | `'` | 交互/长按【调查】【打招呼】、取消 |
-| 十字键 上/下/左/右 | `I` / `K` / `J` / `L` | 菜单移动、礼物翻页 |
+| ✕ | `K` | 确认、对话快进 |
+| ○ | `L` | 交互/长按【调查】【打招呼】、取消 |
+| 十字键 上/左/下/右 | `T` / `F` / `G` / `H` | 菜单移动、礼物翻页 |
 | L1 / R1 | `Q` / `E` | 地图里光标跳转到"返回的基石" |
 | L2 | `Tab` | 拔刀 |
-| 触摸板 | `T` | 打开地图 |
+| 触摸板 | `Y` | 打开地图 |
 | 左摇杆 | `W A S D` | 移动 |
 | 右摇杆 左/右 | `←` / `→` | **转镜头**（键盘是"数字量"，只有按/不按，所以灵敏度很关键，见第 5 节） |
 | 右摇杆 上/下 | `↑` / `↓` | v21 起用于**上下调镜头**：名牌太靠上/下时拉回画面中部 |
-| OPTIONS（三横线） | `O` | v24 起用于打开**暂停菜单**，读左下角队伍卡片，确认目标随从是否还在队伍里 |
-| △ | `[` | 和 L1 组合放突进技能（按你自己职业的技能改） |
+| OPTIONS（三横线） | `P` | v24 起用于打开**暂停菜单**，读左下角队伍卡片，确认目标随从是否还在队伍里 |
+| △ | `I` | 和 L1 组合放突进技能（按你自己职业的技能改） |
+| □ | `J` | 本脚本没用到 |
+
+> **11/09 起全部改成字母键。** 在下一篇《影之刃零》的项目里，□ 映射在分号 `;` 上，偶尔会在 Chiaki 里“卡住”：脚本按、我手动按都没反应，手柄直连 PS5 却正常；在 Chiaki 设置里把 Box 改成别的键再改回来就好了。回头看日志，出过问题的 □（`;`）和 ○（`'`）都是符号键，字母键从没出过问题，所以干脆把手柄按键全换成了字母。 脚本里的按键都集中成了顶部的 `K_CROSS / K_CIRCLE / K_UP / ...` 常量，换键位只改那几行。
 
 > 注意：串流里"按键时长"就是"摇杆推到底的时长"，没有半推。镜头转多少完全靠按多久，这就是后面要做"转向标定"的原因。
 
@@ -244,6 +247,76 @@ self.full_circle_turn_sec = 12.0  # 扫描时转一整圈约 12 秒（看日志�
 - **关掉 PS5 的"已连接远程游玩"提示**：串流刚连上时，画面最顶端会弹出这条通知，正好盖住【基础信息】，脚本会以为"没进石"。在 PS5 上关掉：设置 → 系统 → 远程游玩 → 打开"隐藏远程游玩连接状态弹出通知"。v17 起日志里读到"远程/游玩"会直接提醒你。
 - **礼物上限 50 件**：同一个随从一次最多收 50 件礼物（我自己实测，游戏版本以你当时为准），所以默认 `--loops 50`。
 - **散热**：Chiaki 持续解码视频 + 脚本持续截图、跑 OCR，长时间挂机 Mac 会明显发热。活动监视器里的 CPU% 是按单核算的（100% = 1 个核）。想降负载可以把串流帧率降到 30fps、分辨率保持 1080p、确认用的是硬件解码；电脑放在硬质平面上通风。**如果闻到焦味或塑料味，先停掉挂机，让电脑冷却，再去检查。**
+
+### 6.4 挂机提醒：停止时发 iMessage 到手机（下一个项目《影之刃零》里加的，可以直接照搬）
+
+这是在下一个项目《影之刃零》里加的功能，龙信2的脚本也可以照搬。挂机一跑就是十几个小时，人不可能一直守在电脑前。Mac 自带的通知只能在 Mac 上看到，所以我又让脚本在**停止时发一条 iMessage 到手机**：叠完了、出了异常、被手动停了，手机上都能马上看到。
+
+**不用装任何东西。** 原理是让 Mac 自带的“信息”App 替你发消息：
+
+```text
+Python 脚本
+  └─ subprocess（标准库，相当于在终端里敲命令）
+       └─ osascript（macOS 自带的 AppleScript 执行器；OSA = Open Scripting Architecture）
+            └─ AppleScript：tell application "Messages" to send ...
+                 └─ “信息”App 用你登录的 Apple ID，经苹果的 iMessage 服务器发出 → iPhone 收到
+```
+
+准备工作：
+
+1. Mac 的“信息”App 登录 Apple ID（Messages → Settings → iMessage）。
+2. 脚本顶部 `IMESSAGE_TO` 填接收消息的**手机号**（`+86...`）或 **Apple ID 邮箱**，留空就不发。
+3. 第一次发送时，macOS 会问“是否允许 终端 / PyCharm 控制‘信息’”，点允许。点错了就到“系统设置 → 隐私与安全性 → 自动化”里打开。
+
+核心代码（号码和内容作为参数传给 AppleScript，消息里有引号、换行也不会出错；新旧版 macOS 的写法都兼容）：
+
+```python
+IMESSAGE_TO = ""   # 手机号（+86...）或 Apple ID 邮箱；留空 = 不发
+
+IMESSAGE_SCRIPT = '''on run argv
+    set toWho to item 1 of argv
+    set msg to item 2 of argv
+    tell application "Messages"
+        try
+            set svc to 1st account whose service type = iMessage
+            send msg to participant toWho of svc
+        on error
+            set svc to 1st service whose service type = iMessage
+            send msg to buddy toWho of svc
+        end try
+    end tell
+end run'''
+
+
+def notify_phone(msg):
+    if not IMESSAGE_TO:
+        return False
+    import subprocess
+    r = subprocess.run(["osascript", "-", IMESSAGE_TO, msg], input=IMESSAGE_SCRIPT,
+                       text=True, capture_output=True, timeout=20)
+    return r.returncode == 0
+```
+
+在主程序的 `try ... except ... finally` 里，每种退出方式都记一个原因，`finally` 里统一发出去：
+
+```text
+Phantom Blade Zero bot stopped
+✅ Finished: every item in the plan reached its cap
+This run: 1457 layers. Remaining: 0 layers (~0.0 h)
+11-12 12:03
+```
+
+会发消息的情况：正常叠完、安全停止（按键失灵太久、串流断开、连续失败、内存保险丝）、双击 `stop_bot.command`、在 PyCharm 里点停止按钮（收到 SIGHUP / SIGTERM 也按手动中断处理）、程序崩溃（附错误类型）。只有 Mac 断电、死机时发不出来。另外加了一个 `test_imessage.command`，双击就发一条测试消息。
+
+**踩过的坑：“Not Delivered”。** 11/13 突然所有消息都显示“未送达”，Mac 上连手动发的都失败，但 Mac 明明能上网、iPhone 上发消息也正常。排查下来是 **iPhone 上手机号的 iMessage 注册掉了**：
+
+- iPhone“设置 → App → 信息 → 发送与接收”里，手机号一个勾不上、一个一直转圈（等激活），只有 Apple ID 邮箱是勾选的；
+- 所以 Mac 的 iMessage 设置里也只剩邮箱（Mac 只显示已注册成功的地址），退出重新登录也没用；
+- 发往这个手机号的 iMessage 自然送不出去（收件人名字变红）。
+
+解决：`IMESSAGE_TO` 改成 **Apple ID 邮箱**，马上就能收到。手机号要重新激活：iPhone 上关掉 iMessage 等一会儿再打开，激活时 iPhone 会给苹果发一条国际短信，国内的卡可能要开通国际短信、等几个小时。
+
+两点体会：一是**“能上网”不等于“iMessage 通”**，iMessage 走的是苹果自己的推送通道；二是 **osascript 返回成功只说明“交给信息 App 了”，不代表送达**，所以日志里写“已发送”，手机却可能没收到。真担心漏消息，可以再加一条备用通道（微信的 Server酱 / PushPlus，或 iPhone 的 Bark）。
 
 ---
 
@@ -704,7 +777,7 @@ Quartz.CGEventPostToPid(self.pid, ev)
 | `assets/templates/` 三张模板 | **必须自己裁**：在 2880 宽的全屏画面上截【调查】提示、【打招呼】提示、"是否离开异界石"弹窗。分辨率/语言不同都要重裁 |
 | `CANON_W, CANON_H` | 我的统一画面是 2880×1800（MacBook 全屏截图，视频 2880×1620 + 上下黑边 90）。你的模板截图尺寸不同就改这里，并按比例检查 ROI |
 | 虚拟屏分辨率 | 推荐和模板一致（我的是 2880×1620） |
-| 按键映射 `MAC_KEYCODES` / 各处按键名 | 和你 Chiaki 的 Keys 设置一致（含 OPTIONS=`O`、右摇杆上下=`↑`/`↓`）；组合技能键 `[` 按你的职业改 |
+| 按键映射 `MAC_KEYCODES` / 各处按键名 | 和你 Chiaki 的 Keys 设置一致（脚本顶部的 `K_*` 常量；含 OPTIONS=`P`、触摸板=`Y`、右摇杆上下=`↑`/`↓`）；组合技能键 `[` 按你的职业改 |
 | 运动参数 | 跑模式 10 标定后填 `turn_sec_per_width` 等；`pawn_anchor_x_offset` 是越肩视角补偿 |
 | 地图传送 | 我传送到固定的"诺根的基石"，要先站在正确位置运行**模式 8** 生成地图参考图；你用别的基石要重新标定 |
 | 礼物优先级 | 文件顶部的 `GIFT_TIERS`（5 档，0 最高）。每个道具写显示名和 OCR 片段，改成你想送的东西 |
