@@ -3,6 +3,12 @@
 影之刃零 (Phantom Blade Zero) 饰品属性叠加脚本 —— v11（后台模式 + 虚拟屏）
 VERSION = v11（2026-11-10）。历史版本在 history/。
 
+v11 小修（11/13）：Chiaki 串流断开后不再停止（以前要人回到 Mac 前点重连、再重新运行脚本）：
+  · 断线（回到主机列表 / 全黑 20 秒 / 截不到串流窗口）→ 发 iMessage，原地等最多 30 分钟；
+  · 在主机列表时自己按回车试着重连（最多 3 次，第 2、3 次先按 ↓ / ↑ 再回车），每次都存截图到 debug/；
+  · 串流回来了（不管是自己连上的、用户手动点的、还是 AI 远程点的）→ 按 ○ 关掉 PS5 控制中心，接着叠；
+  · 30 分钟还没回来才停止（PS5 待机 / 游戏被关之类，只能人处理）。
+
 v11 小修（11/12）：舞扇+1 被误判成"装在别的格子"跳过了 —— 它的图标是一把红扇子，左上角也有红色，被当成了红标。
   现在红标要和装备页饰品格里实际装着的饰品核对：饰品格里没有它就当误判、照常叠；红色像素门槛 0.03 → 0.06。
 
@@ -185,7 +191,7 @@ VERSION = "v11"
 # v10：要叠哪些饰品、各叠多少层、谁先谁后，都写在 stack_plan.txt（格式见 PLAN_TEMPLATE）
 # v11：停止时用 iMessage 发到手机（Mac 的"信息"App 要登录 Apple ID）。填你的手机号（+86 开头）或 Apple ID 邮箱；
 # 留空 = 不发。第一次发送时 macOS 会问"是否允许 PyCharm / 终端 控制'信息'"→ 点允许。
-IMESSAGE_TO = "1411784051@qq.com"
+IMESSAGE_TO = ""   # 手机号（+86...）或 Apple ID 邮箱；留空 = 不发
 SMALL_CAP_LIMIT = 50                # 上限 < 这个数 = 第一阶段（按上限从小到大，一件叠满再下一件）
 DEFAULT_CAP = 990                   # 清单里没写上限时用
 NAME_MIN_SCORE = 0.67               # 清单名字和 OCR 名字的相似度门槛（3 个字错 1 个也能认出）
@@ -203,6 +209,9 @@ MAX_STACKS = int(round((MAX_MULTIPLIER - 1) / STACK_STEP))   # = 990 层；到�
 HOLD_LEARN_SEC = 2.5                # 修行时按住 ✕ 的时长（视频约 1 秒，留余量）
 FAIL_STREAK_STOP = 3                # 连续几轮失败 → 停止
 KEY_DEAD_WAITS = [60, 120, 240, 480]  # v7：某个键失灵时，依次等这么多秒再试（共 15 分钟），还不行才停止
+STREAM_WAIT_MAX = 1800             # 11/13：串流断开后最多等多久（秒）恢复，超过才停止
+STREAM_CHECK_EVERY = 20            # 等待期间每隔几秒看一次
+AUTO_RECONNECT_TRIES = 3           # 回到主机列表时，自己按回车试着重连几次（之后只等，不再按）
 LOOP_TIMEOUT_SEC = 240              # 单轮最长时间（正常约 50~70 秒）
 
 # ---------- 按键（与 Chiaki-ng → Settings → Keys 一致，沿用 DD2 那套）----------
@@ -235,7 +244,7 @@ ALL_KEYS = [K_CROSS, K_CIRCLE, K_SQUARE, K_OPTIONS, K_UP, K_DOWN, K_LEFT, K_RIGH
 MAC_KEYCODES = {
     'a': 0, 's': 1, 'd': 2, 'f': 3, 'h': 4, 'g': 5, 'c': 8, 'q': 12, 'w': 13, 'e': 14, 'r': 15, 'y': 16,
     't': 17, 'o': 31, 'u': 32, '[': 33, 'i': 34, 'p': 35, 'l': 37, 'j': 38, "'": 39, 'k': 40, ';': 41,
-    '/': 44, 'tab': 48, 'left': 123, 'right': 124, 'down': 125, 'up': 126,
+    '/': 44, 'tab': 48, 'left': 123, 'right': 124, 'down': 125, 'up': 126, 'return': 36,
 }
 CANON_W, CANON_H = 2880, 1800          # 沿用 DD2：视频 2880x1620，上下各 90 像素黑边
 CANON_VID_H, CANON_VID_Y = 1620, 90
@@ -283,6 +292,10 @@ class ChiakiNotReady(Exception):
 
 class MemoryGuardException(Exception):
     pass
+
+
+class StreamLost(Exception):
+    """11/13：Chiaki 串流断了（回到主机列表 / 画面全黑 / 截不到串流窗口）→ 原地等它回来"""
 
 
 class StreamResumed(Exception):
@@ -1069,7 +1082,10 @@ class PBZAccessoryBot:
     def grab(self):
         if os.path.exists(STOP_FILE):
             raise StopRequested("检测到 STOP 文件")
-        canon, _ = self.backend.grab_canonical()
+        try:
+            canon, _ = self.backend.grab_canonical()
+        except ChiakiNotReady as e:
+            raise StreamLost(f"截不到 Chiaki 串流画面：{e}")
         return Frame(np.ascontiguousarray(canon[CANON_VID_Y:CANON_VID_Y + CANON_VID_H, :, :3]))
 
     def ocr_boxes(self, fr, roi, scale=0.6, allowlist=None):
@@ -1316,8 +1332,7 @@ class PBZAccessoryBot:
         """断线了就立刻停止，不再发任何键（主机列表界面里乱按可能误点 Delete / Wake Up 等按钮）"""
         if self.chiaki_disconnected():
             self.save_debug_frame("chiaki_disconnected")
-            raise FatalStop(f"[{where}] Chiaki 串流已断开（画面全黑或回到了主机列表）—— 请检查 PS5 是否进入待机 / 断网，"
-                            f"重新连上串流、角色站回铃铛旁后再运行")
+            raise StreamLost(f"[{where}] Chiaki 串流已断开（画面全黑或回到了主机列表）")
 
     def chiaki_overlay(self, fr=None):
         """v5：Chiaki-ng 自己的串流菜单（不是游戏的 UI）：左下角 ✕ / 音量 / Mic / Zoom / Stretch / Default /
@@ -2295,6 +2310,90 @@ class PBZAccessoryBot:
         self.leave_bell()
         self.equip_target()
 
+    def _stream_state(self):
+        """等待串流时看一眼：'ok' 串流正常 / 'hosts' 在主机列表 / 'black' 全黑 / 'none' 截不到"""
+        try:
+            self.backend.refresh()
+            canon, _ = self.backend.grab_canonical()
+        except Exception:
+            return "none", None
+        fr = Frame(np.ascontiguousarray(canon[CANON_VID_Y:CANON_VID_Y + CANON_VID_H, :, :3]))
+        top = self.ocr_text(fr, (0.35, 0.0, 0.95, 0.075), scale=0.8).lower()
+        if sum(k in top for k in ("refresh", "psn", "hosts", "manual", "steam", "shortcut")) >= 2:
+            return "hosts", fr
+        if float(fr.gray.mean()) <= 4.0:
+            return "black", fr
+        return "ok", fr
+
+    def _post_key(self, name):
+        """直接发给 Chiaki 进程的一个键（主机列表界面用，不经过游戏按键那套计数）"""
+        release_everything()
+        with _pool():
+            src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+            for down in (True, False):
+                ev = Quartz.CGEventCreateKeyboardEvent(src, MAC_KEYCODES[name], down)
+                Quartz.CGEventSetFlags(ev, 0)
+                Quartz.CGEventPostToPid(self.backend.pid, ev)
+                time.sleep(0.08)
+
+    def wait_for_stream(self, why):
+        """11/13：串流断开后不停止。手机通知一次 → 每 20 秒看一眼：
+        回到主机列表就按回车试着重连（最多 3 次，第 2、3 次先按 ↓ / ↑ 选中再回车）；
+        串流回来了（不管是自己连上的、用户点的、还是 AI 远程点的）→ 按 ○ 关掉 PS5 控制中心，接着叠。
+        等满 STREAM_WAIT_MAX 还没回来 → 停止。"""
+        release_everything()
+        sep("!")
+        debug_log(f"📴 [串流断开] {why} → 原地等串流恢复（最多 {STREAM_WAIT_MAX // 60} 分钟），不停止")
+        notify_mac("影之刃零：串流断开", "正在等串流恢复（会自己试着重连）")
+        notify_phone(f"Phantom Blade Zero bot: Chiaki stream lost\nWaiting up to {STREAM_WAIT_MAX // 60} min "
+                     f"and trying to reconnect by itself.\n{datetime.now().strftime('%m-%d %H:%M')}")
+        t0, tries, last_try = time.time(), 0, 0.0
+        while time.time() - t0 < STREAM_WAIT_MAX:
+            if os.path.exists(STOP_FILE):
+                raise StopRequested("检测到 STOP 文件")
+            state, fr = self._stream_state()
+            if state == "ok":
+                # 再确认一次（刚连上时可能闪一下）
+                time.sleep(3.0)
+                state2, fr = self._stream_state()
+                if state2 == "ok":
+                    break
+                state = state2
+            if state == "hosts":
+                if fr is not None and tries == 0:
+                    self.save_debug_frame("host_list", fr)
+                if tries < AUTO_RECONNECT_TRIES and time.time() - last_try >= 45:
+                    tries += 1
+                    last_try = time.time()
+                    pre = [None, "down", "up"][(tries - 1) % 3]
+                    debug_log(f"    🔌 [串流断开] 在主机列表 → 第 {tries} 次自动重连："
+                              f"{'按 ' + pre + ' 再' if pre else ''}按回车")
+                    try:
+                        if pre:
+                            self._post_key(pre)
+                            time.sleep(0.6)
+                        self._post_key("return")
+                    except Exception as e:
+                        debug_log(f"    ⚠️ 发键失败：{e}")
+                    if fr is not None:
+                        self.save_debug_frame(f"host_list_try{tries}", fr)
+            debug_log(f"    ⏳ [串流断开] 已等 {time.time() - t0:.0f}s，当前：{state}")
+            t_w = time.time()
+            while time.time() - t_w < STREAM_CHECK_EVERY:
+                if os.path.exists(STOP_FILE):
+                    raise StopRequested("检测到 STOP 文件")
+                time.sleep(1.0)
+        else:
+            raise FatalStop(f"Chiaki 串流已断开，等了 {STREAM_WAIT_MAX // 60} 分钟都没恢复"
+                            f"（自动重连试了 {tries} 次）—— 请检查 PS5 是否进入待机 / 断网")
+        took = time.time() - t0
+        debug_log(f"✅ [串流断开] 串流已恢复（断了约 {took:.0f}s）→ 按 ○ 关掉 PS5 可能弹出的控制中心，接着叠")
+        time.sleep(4.0)
+        self.backend.last_change_t, self.backend.keys_since_change = time.time(), 0
+        self.tap(K_CIRCLE, wait=1.5)
+        notify_phone(f"Phantom Blade Zero bot: stream is back after {took / 60:.0f} min, resuming\n"
+                     f"{datetime.now().strftime('%m-%d %H:%M')}")
+
     def run_loop(self, max_loops=0):
         self.reload_plan(force=True)
         self.print_status("📈 叠加清单（stack_plan.txt）当前进度：")
@@ -2302,78 +2401,86 @@ class PBZAccessoryBot:
         n = 0
         while max_loops <= 0 or n < max_loops:
             n += 1
-            sep("=")
-            gc.collect()
             try:
-                import torch
-                if torch.backends.mps.is_available():
-                    torch.mps.empty_cache()
-            except Exception:
-                pass
-            mem = current_rss_gb()
-            self.reload_plan()
-            self.set_target(self.choose_target())
+                self._round(n)
+            except StreamLost as e:
+                # 11/13：串流断了不再停止 —— 原地等串流回来（自己按回车试着重连），回来后接着叠
+                self.wait_for_stream(str(e))
+
+    def _round(self, n):
+        """一轮（v11 11/13 从 run_loop 里拆出来，方便统一处理串流断开）"""
+        sep("=")
+        gc.collect()
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        except Exception:
+            pass
+        mem = current_rss_gb()
+        self.reload_plan()
+        self.set_target(self.choose_target())
+        cap = next((c for nm, c, _ in self.plan if nm == self.target), DEFAULT_CAP)
+        debug_log(f"🔁 第 {n} 轮 | 目标【{self.target}】{load_stacks(self.target)}/{cap}（阶段{self.phase}）| "
+                  f"本次运行 {self.loops_ok} 层 | 🧠 内存 {mem:.2f} GB")
+        if mem > MEM_STOP_GB:
+            raise MemoryGuardException(f"脚本占用 {mem:.1f}GB > {MEM_STOP_GB}GB")
+        if mem > MEM_WARN_GB:
+            debug_log(f"⚠️ 内存偏高 {mem:.1f}GB")
+        t0 = time.time()
+        try:
+            self.one_loop()
+            self.loops_ok += 1
+            total = self.after_success()
+            self.loop_secs.append(time.time() - t0)
+            self.fail_streak = 0
+            if self.key_dead_streak:
+                debug_log(f"    ✅ 失灵的键已恢复（之前连续 {self.key_dead_streak} 次没反应，共等了 "
+                          f"{sum(KEY_DEAD_WAITS[:self.key_dead_streak])}s）")
+                self.key_dead_streak = 0
             cap = next((c for nm, c, _ in self.plan if nm == self.target), DEFAULT_CAP)
-            debug_log(f"🔁 第 {n} 轮 | 目标【{self.target}】{load_stacks(self.target)}/{cap}（阶段{self.phase}）| "
-                      f"本次运行 {self.loops_ok} 层 | 🧠 内存 {mem:.2f} GB")
-            if mem > MEM_STOP_GB:
-                raise MemoryGuardException(f"脚本占用 {mem:.1f}GB > {MEM_STOP_GB}GB")
-            if mem > MEM_WARN_GB:
-                debug_log(f"⚠️ 内存偏高 {mem:.1f}GB")
-            t0 = time.time()
-            try:
-                self.one_loop()
-                self.loops_ok += 1
-                total = self.after_success()
-                self.loop_secs.append(time.time() - t0)
-                self.fail_streak = 0
-                if self.key_dead_streak:
-                    debug_log(f"    ✅ 失灵的键已恢复（之前连续 {self.key_dead_streak} 次没反应，共等了 "
-                              f"{sum(KEY_DEAD_WAITS[:self.key_dead_streak])}s）")
-                    self.key_dead_streak = 0
-                cap = next((c for nm, c, _ in self.plan if nm == self.target), DEFAULT_CAP)
-                debug_log(f"🏆 第 {n} 轮完成：【{self.target}】{total}/{cap}，本次运行 {self.loops_ok} 层"
-                          f"（本轮 {time.time() - t0:.0f}s）{'  ✅ 这件叠满了' if total >= cap else ''}")
-                self.write_status()
-            except KeyDead as e:
-                debug_log(f"❌ 第 {n} 轮失败：{e}")
-                self.save_debug_frame("key_dead")
-                self.check_disconnected("失败检查")
-                if self.handle_chiaki_overlay("失败检查"):
-                    self.escape_to_world("Chiaki 菜单消失后")
-                    continue
-                self.escape_to_world("按键失灵")
-                if self.key_dead_streak >= len(KEY_DEAD_WAITS):
-                    raise FatalStop(f"按键失灵，等了 {sum(KEY_DEAD_WAITS)}s 都没恢复 —— 请在 Chiaki 窗口里手动按一下 □"
-                                    f"（键盘 {K_SQUARE}）看有没有反应，再把结果告诉 AI")
-                wait = KEY_DEAD_WAITS[self.key_dead_streak]
-                self.key_dead_streak += 1
-                debug_log(f"    ⏸️ 按键失灵第 {self.key_dead_streak} 次 → 在野外停 {wait}s 不发任何键，再试")
-                t_w = time.time()
-                while time.time() - t_w < wait:
-                    if os.path.exists(STOP_FILE):
-                        raise StopRequested("检测到 STOP 文件")
-                    time.sleep(1.0)
-                release_everything()
-            except LoopFailed as e:
-                debug_log(f"❌ 第 {n} 轮失败：{e}")
-                self.save_debug_frame("loop_fail")
-                self.check_disconnected("失败检查")
-                if self.handle_chiaki_overlay("失败检查"):
-                    # 是 Chiaki 菜单挡住了按键，不是脚本/游戏的问题 → 不计入连续失败
-                    self.escape_to_world("Chiaki 菜单消失后")
-                    continue
-                self.fail_streak += 1
-                debug_log(f"    （连续失败 {self.fail_streak} 次）")
-                self.escape_to_world("失败恢复")
-                if self.fail_streak >= FAIL_STREAK_STOP:
-                    raise FatalStop(f"连续 {self.fail_streak} 轮失败")
-                self.write_status()
-            except StreamResumed:
-                debug_log("🔁 画面冻结后恢复 → 本轮作废")
-                self.escape_to_world("冻结恢复")
-            if time.time() - t0 > LOOP_TIMEOUT_SEC:
-                debug_log(f"⚠️ 这一轮用了 {time.time() - t0:.0f}s，超过 {LOOP_TIMEOUT_SEC}s")
+            debug_log(f"🏆 第 {n} 轮完成：【{self.target}】{total}/{cap}，本次运行 {self.loops_ok} 层"
+                      f"（本轮 {time.time() - t0:.0f}s）{'  ✅ 这件叠满了' if total >= cap else ''}")
+            self.write_status()
+        except KeyDead as e:
+            debug_log(f"❌ 第 {n} 轮失败：{e}")
+            self.save_debug_frame("key_dead")
+            self.check_disconnected("失败检查")
+            if self.handle_chiaki_overlay("失败检查"):
+                self.escape_to_world("Chiaki 菜单消失后")
+                return
+            self.escape_to_world("按键失灵")
+            if self.key_dead_streak >= len(KEY_DEAD_WAITS):
+                raise FatalStop(f"按键失灵，等了 {sum(KEY_DEAD_WAITS)}s 都没恢复 —— 请在 Chiaki 窗口里手动按一下 □"
+                                f"（键盘 {K_SQUARE}）看有没有反应，再把结果告诉 AI")
+            wait = KEY_DEAD_WAITS[self.key_dead_streak]
+            self.key_dead_streak += 1
+            debug_log(f"    ⏸️ 按键失灵第 {self.key_dead_streak} 次 → 在野外停 {wait}s 不发任何键，再试")
+            t_w = time.time()
+            while time.time() - t_w < wait:
+                if os.path.exists(STOP_FILE):
+                    raise StopRequested("检测到 STOP 文件")
+                time.sleep(1.0)
+            release_everything()
+        except LoopFailed as e:
+            debug_log(f"❌ 第 {n} 轮失败：{e}")
+            self.save_debug_frame("loop_fail")
+            self.check_disconnected("失败检查")
+            if self.handle_chiaki_overlay("失败检查"):
+                # 是 Chiaki 菜单挡住了按键，不是脚本/游戏的问题 → 不计入连续失败
+                self.escape_to_world("Chiaki 菜单消失后")
+                return
+            self.fail_streak += 1
+            debug_log(f"    （连续失败 {self.fail_streak} 次）")
+            self.escape_to_world("失败恢复")
+            if self.fail_streak >= FAIL_STREAK_STOP:
+                raise FatalStop(f"连续 {self.fail_streak} 轮失败")
+            self.write_status()
+        except StreamResumed:
+            debug_log("🔁 画面冻结后恢复 → 本轮作废")
+            self.escape_to_world("冻结恢复")
+        if time.time() - t0 > LOOP_TIMEOUT_SEC:
+            debug_log(f"⚠️ 这一轮用了 {time.time() - t0:.0f}s，超过 {LOOP_TIMEOUT_SEC}s")
 
     # =========================================================================
     # 诊断：截一帧打印所有检测结果
